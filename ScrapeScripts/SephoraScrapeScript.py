@@ -170,7 +170,7 @@ class SephoraDataCollector:
         #limit: max is 100 - means that only 100 reviews per page
         #offset: which set of 100 (or whatever specified limit) we are on
         #iterate over offset in url by getting total number of reviews from json and dividing by 100
-        for offset in range(math.floor((dat['TotalResults'])/100) + 1):
+        for offset in range(0,(dat['TotalResults']),100):
             
             #get data for specific offset value and product_id
             data = self._fetch(self.review_url.format(**{'offset': offset, 'product_id': product_id}))
