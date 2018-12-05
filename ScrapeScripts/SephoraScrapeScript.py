@@ -15,6 +15,8 @@ class SephoraDataCollector:
         
         """
         
+        self.brands_url = "https://www.sephora.com/api/catalog/brands?/currentPage=0&pageSize=999999999&content=true&includeRegionsMap=true"
+        
         #url to return all products in foundation category
         self.product_url = 'https://www.sephora.com/api/catalog/categories/cat60004/products?currentPage={current_page}&pageSize=999999999&content=true&includeRegionsMap=true'
         
@@ -32,9 +34,9 @@ class SephoraDataCollector:
         #get all product ids to iterate over
         product_ids = self._fetch_all_product_ids()
         
-        #row names in csv
-        key_fields = ['brand', 'name', 'rating', 'skin_type', 'eye_color', 'skin_concerns', 'incentivized_review',
-                      'skin_tone', 'age', 'beauty_insider', 'user_name', 'price']
+        #column names in csv
+        key_fields = ['brand', 'name', 'brand_id', 'brand_image_url', 'product_id', 'product_image_url', 'rating', 'skin_type', 'eye_color', 'skin_concerns', 'incentivized_review',
+                      'skin_tone', 'age', 'beauty_insider', 'user_name', 'price', 'recommended', 'first_submission_date', 'last_submission_date', 'location', 'description']
         
         #create csv file
         with open(file_path, 'w', newline='') as csvfile:
@@ -46,8 +48,15 @@ class SephoraDataCollector:
                 batch_review = self._fetch_all_reviews(p)
                 for batch in batch_review:
                     writer.writerow(batch)
+                    
     
     def fetch_and_print_tags(self, file_path = 'Sephora_Foundation_Tags.csv'):
+        
+        """
+        
+        returns all tags for foundation in reviews
+        
+        """
         
         product_ids = self._fetch_all_product_ids()
         brands = self._fetch_all_brand_names()
@@ -63,7 +72,7 @@ class SephoraDataCollector:
             df = pd.concat([df, tag_df])
         
         df.to_csv(file_path, index=False)
-            
+    
     
     
     def _fetch_all_product_ids(self):
@@ -153,6 +162,8 @@ class SephoraDataCollector:
         
         """
         
+        
+        
         #get list of prices, brands, and product names in order of iteration
         price_dat = self._fetch_all_prices()
         brand_dat = self._fetch_all_brand_names()
@@ -168,21 +179,30 @@ class SephoraDataCollector:
         all_reviews = []
         
         #limit: max is 100 - means that only 100 reviews per page
-        #offset: which set of 100 (or whatever specified limit) we are on
+        #offset: how many reviews you want to skip over before seeing limit number of reviews
         #iterate over offset in url by getting total number of reviews from json and dividing by 100
-        for offset in range(0,(dat['TotalResults']),100):
+        for offset in range(0,dat['TotalResults'],100):
             
             #get data for specific offset value and product_id
             data = self._fetch(self.review_url.format(**{'offset': offset, 'product_id': product_id}))
+            
+            brand_img_dat = self._fetch(self.brands_url)
+            
+            brand_img_dct = dict(zip([i.get('brandId') for i in brand_img_dat['brands']], [i.get('logo') for i in brand_img_dat['brands']]))
             
             #this table remains constant for specific product_id but still needs to be appended to row
             table1 = {'brand': brand_dat[prod_ids.index(product_id)],
                       'name': prod_dat[prod_ids.index(product_id)],
                       'price': price_dat[prod_ids.index(product_id)]}
             
+            
             #this table is review specific information
             for review in data['Results']:
-                table2 = {'user_name': review.get('UserNickname', ''),
+                table2 = {'brand_id': self.nget(data, '', 'Includes', 'Products',review.get('ProductId', ''), 'BrandExternalId'), 
+                          'brand_image_url': brand_img_dct[self.nget(data, '', 'Includes', 'Products',review.get('ProductId', ''), 'BrandExternalId')],
+                          'product_id': product_id,
+                          'product_image_url': self.nget(data, '', 'Includes', 'Products', review.get('ProductId', ''), 'ImageUrl'),
+                          'user_name': review.get('UserNickname', ''),
                           'rating': review.get('Rating', ''),
                           'skin_type': self.nget(review, '', 'ContextDataValues', 'skinType', 'Value'),
                           'eye_color': self.nget(review, '', 'ContextDataValues', 'eyeColor', 'Value'),
@@ -190,7 +210,14 @@ class SephoraDataCollector:
                           'incentivized_review': self.nget(review, '', 'ContextDataValues', 'IncentivizedReview', 'Value'),
                           'skin_tone': self.nget(review, '', 'ContextDataValues', 'skinTone', 'Value'),
                           'age': self.nget(review, '', 'ContextDataValues', 'age', 'Value'),
-                          'beauty_insider': self.nget(review, '', 'ContextDataValues', 'beautyInsider', 'Value')}
+                          'beauty_insider': self.nget(review, '', 'ContextDataValues', 'beautyInsider', 'Value'),
+                          'recommended': self.nget(review, '', 'IsRecommended'),
+                          'first_submission_date': self.nget(review, '', 'SubmissionTime'),
+                          'last_submission_date': self.nget(review, '', 'LastModificationTime'),
+                          'location': self.nget(review, '', 'UserLocation'),
+                          'description': self.nget(data, '', 'Includes', 'Products',review.get('ProductId', ''), 'Description')}
+                
+           
                 
                 #concatenate and append both to make one row in csv
                 all_reviews.append({**table1, **table2})
